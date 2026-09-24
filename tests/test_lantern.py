@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from lamparo_lantern import LANTERN_VERSION, handle, load_keys, normalize_name
+from lamparo_lantern.asgi import lantern as asgi_lantern
 from lamparo_lantern.wsgi import lantern as wsgi_lantern
 
 SECRET = "a" * 40
@@ -107,6 +108,33 @@ class LanternTest(unittest.TestCase):
             body = b"".join(app({"REQUEST_METHOD": "GET", "PATH_INFO": "/lamparo"}, start_response))
             self.assertEqual(captured["status"], "404 Not Found")
             self.assertEqual(body, b"")
+        finally:
+            for k in ENV:
+                os.environ.pop(k, None)
+
+    def test_the_asgi_adapter_answers_from_the_scope_with_the_mounted_path(self):
+        import asyncio
+
+        app = asgi_lantern(root=self.root)
+        os.environ.update(ENV)
+        try:
+            headers = headers_for(x_lamparo_timestamp=str(int(__import__("time").time())))
+            scope = {"type": "http", "method": "GET", "root_path": "/lamparo", "path": "", "headers": [(k.encode(), v.encode()) for k, v in headers.items()]}
+            sent = []
+
+            async def receive():
+                return {"type": "http.request"}
+
+            async def send(message):
+                sent.append(message)
+
+            asyncio.run(app(scope, receive, send))
+            self.assertEqual(sent[0]["status"], 200)
+            self.assertEqual(json.loads(sent[1]["body"])["facts"]["runtime"]["name"], "python")
+            sent.clear()
+            asyncio.run(app({"type": "http", "method": "GET", "path": "/lamparo", "headers": []}, receive, send))
+            self.assertEqual(sent[0]["status"], 404)
+            self.assertEqual(sent[1]["body"], b"")
         finally:
             for k in ENV:
                 os.environ.pop(k, None)

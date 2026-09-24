@@ -28,6 +28,14 @@ urlpatterns = [
 ]
 ```
 
+## FastAPI, Starlette (ASGI)
+
+```python
+from lamparo_lantern.asgi import lantern
+
+app.mount("/lamparo", lantern())
+```
+
 ## WSGI (Flask, or any WSGI server)
 
 ```python

@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from importlib import metadata
 from typing import Callable, Dict, List, Optional, Tuple
 
-LANTERN_VERSION = "0.1.0"
+LANTERN_VERSION = "0.2.0"
 # Tolérance d'horloge, en secondes.
 MAX_SKEW = 300
 # Plus de clés que ça, ce n'est plus un site partagé : c'est une erreur de configuration.

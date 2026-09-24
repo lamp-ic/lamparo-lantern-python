@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lamparo-lantern"
-version = "0.1.0"
+version = "0.2.0"
 description = "lamparo's lantern for Python: a signed, read-only view that tells lamparo what the site knows about itself."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "lamp", email = "bonjour@lamparo.app" }]
 requires-python = ">=3.9"
 dependencies = []
-keywords = ["lamparo", "monitoring", "django", "wsgi"]
+keywords = ["lamparo", "monitoring", "django", "wsgi", "asgi", "fastapi"]
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
