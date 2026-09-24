@@ -1,0 +1,33 @@
+# Publie lamparo-lantern sur PyPI à chaque tag vX.Y.Z poussé, par « trusted publishing » (OpenID Connect) :
+# aucun jeton dans le dépôt, PyPI reconnaît ce dépôt et ce workflow. Se lance aussi à la main (Run workflow).
+name: publish
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - run: PYTHONPATH=src python3 -m unittest discover -s tests
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 -m pip install --upgrade build
+      - run: python3 -m build
+      - uses: pypa/gh-action-pypi-publish@release/v1
