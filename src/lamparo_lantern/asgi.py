@@ -1,21 +1,29 @@
 """
-ASGI (FastAPI, Starlette, Quart, un serveur nu) : une application à monter sur /lamparo —
+ASGI (FastAPI, Starlette, Quart, un serveur nu) : une application à poser sur /lamparo —
     from lamparo_lantern.asgi import lantern
-    app.mount("/lamparo", lantern())
-Montée, l'application voit root_path=/lamparo et path vide : c'est le chemin complet qui est signé.
+    app.add_route("/lamparo", lantern())          # une route exacte, sans redirection
+    app.mount("/lamparo", lantern())              # ou un montage : « /lamparo/ » est accepté comme « /lamparo »
+Selon la version d'ASGI, `path` contient déjà `root_path` ou non : les deux formes donnent le chemin complet.
 """
 from typing import Optional
 
 from . import handle
 
 
-def lantern(root: Optional[str] = None):
-    async def app(scope, receive, send):
+class Lantern:
+    """Une application ASGI. Une instance, pas une fonction : Starlette la monte telle quelle sur une Route."""
+
+    def __init__(self, root: Optional[str] = None):
+        self.root = root
+
+    async def __call__(self, scope, receive, send):
         if scope.get("type") != "http":
             return
         raw = {name.decode("latin-1").lower(): value.decode("latin-1") for name, value in scope.get("headers") or []}
-        path = (scope.get("root_path") or "") + (scope.get("path") or "")
-        status, headers, body = handle(scope.get("method", ""), path or "/", lambda name: raw.get(name.lower()), root=root)
+        root_path = scope.get("root_path") or ""
+        path = scope.get("path") or ""
+        full = path if (root_path and path.startswith(root_path)) else root_path + path
+        status, headers, body = handle(scope.get("method", ""), full or "/", lambda name: raw.get(name.lower()), root=self.root)
         await send({
             "type": "http.response.start",
             "status": status,
@@ -23,4 +31,6 @@ def lantern(root: Optional[str] = None):
         })
         await send({"type": "http.response.body", "body": body})
 
-    return app
+
+def lantern(root: Optional[str] = None) -> Lantern:
+    return Lantern(root)

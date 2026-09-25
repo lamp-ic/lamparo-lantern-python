@@ -2,7 +2,8 @@
 WSGI (Flask, Bottle, un serveur nu) : une application à monter sur /lamparo —
     from lamparo_lantern.wsgi import lantern
     app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {"/lamparo": lantern()})
-Sous un serveur qui monte l'application à la racine, PATH_INFO vaut /lamparo et c'est ce chemin qui est signé.
+Monté, SCRIPT_NAME vaut /lamparo et PATH_INFO est vide ; à la racine, PATH_INFO vaut /lamparo. Dans les deux cas
+c'est « /lamparo » qui est signé, barre finale ou pas.
 """
 from typing import Optional
 
@@ -11,7 +12,9 @@ from . import handle
 
 def lantern(root: Optional[str] = None):
     def app(environ, start_response):
-        path = (environ.get("SCRIPT_NAME") or "") + (environ.get("PATH_INFO") or "/")
+        # Sous un montage (DispatcherMiddleware), SCRIPT_NAME porte le préfixe et PATH_INFO est vide : le chemin
+        # complet est « /lamparo », sans barre finale ajoutée — c'est lui que la plateforme a signé.
+        path = ((environ.get("SCRIPT_NAME") or "") + (environ.get("PATH_INFO") or "")) or "/"
         status, headers, body = handle(
             environ.get("REQUEST_METHOD", ""),
             path,

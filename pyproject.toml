@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lamparo-lantern"
-version = "0.2.0"
+version = "0.2.1"
 description = "lamparo's lantern for Python: a signed, read-only view that tells lamparo what the site knows about itself."
 readme = "README.md"
 license = { text = "MIT" }

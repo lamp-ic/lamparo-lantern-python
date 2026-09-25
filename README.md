@@ -33,7 +33,7 @@ urlpatterns = [
 ```python
 from lamparo_lantern.asgi import lantern
 
-app.mount("/lamparo", lantern())
+app.add_route("/lamparo", lantern())  # an exact route, no redirect; app.mount("/lamparo", lantern()) works too
 ```
 
 ## WSGI (Flask, or any WSGI server)

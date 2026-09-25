@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from importlib import metadata
 from typing import Callable, Dict, List, Optional, Tuple
 
-LANTERN_VERSION = "0.2.0"
+LANTERN_VERSION = "0.2.1"
 # Tolérance d'horloge, en secondes.
 MAX_SKEW = 300
 # Plus de clés que ça, ce n'est plus un site partagé : c'est une erreur de configuration.
@@ -41,6 +41,7 @@ MAX_MANIFEST_BYTES = 1048576
 
 _KEY_NAME = re.compile(r"^LAMPARO_KEY(_[A-Za-z0-9]+)?$")
 _KEY_VALUE = re.compile(r"^\s*([A-Za-z0-9_]{4,32}):([A-Za-z0-9]{32,128})\s*$")
+_SIGNATURE = re.compile(r"^[0-9a-fA-F]{64}$")
 _NONCE = re.compile(r"^[A-Za-z0-9]{8,64}$")
 _TIMESTAMP = re.compile(r"^[0-9]{1,12}$")
 # Un nom de distribution, tel que PEP 503 le normalise : minuscules, un seul tiret entre les mots.
@@ -90,6 +91,9 @@ def authenticate(keys: List[Dict[str, str]], method: str, path: str, header: Cal
     key = next((k for k in keys if k["id"] == key_id), None)
     if key is None or not _TIMESTAMP.match(timestamp) or abs(now - int(timestamp)) > MAX_SKEW or not _NONCE.match(nonce):
         return None
+    # Une signature qui n'est pas soixante-quatre chiffres hexadécimaux n'est pas une signature : 404, pas une erreur.
+    if not _SIGNATURE.match(signature):
+        return None
     canonical = "\n".join(["GET", path, key_id, timestamp, nonce])
     return key if hmac.compare_digest(_hmac(key["secret"], canonical), signature.lower()) else None
 
@@ -133,13 +137,11 @@ def read_packages(root: str, errors: List[Dict[str, str]]) -> List[Dict[str, obj
         if not _NAME.match(name) or name in seen:
             continue
         seen[name] = version
-    packages = []
-    for name in sorted(seen):
-        packages.append({"name": name, "version": seen[name], "direct": name in direct if direct is not None else None})
-        if len(packages) >= MAX_PACKAGES:
-            errors.append({"scope": "packages", "reason": "packages truncated"})
-            break
-    return packages
+    names = sorted(seen)
+    if len(names) > MAX_PACKAGES:
+        errors.append({"scope": "packages", "reason": "packages truncated"})
+        names = names[:MAX_PACKAGES]
+    return [{"name": name, "version": seen[name], "direct": name in direct if direct is not None else None} for name in names]
 
 
 def _read_requirements(root: str, errors: List[Dict[str, str]]) -> Optional[set]:
@@ -189,6 +191,8 @@ def respond(payload: Dict[str, object], secret: str) -> Response:
 
 def handle(method: str, path: str, header: Callable[[str], Optional[str]], root: Optional[str] = None, env: Optional[Dict[str, str]] = None, now: Optional[int] = None) -> Response:
     """Traite une requête décrite de façon neutre ; les adaptateurs (django, wsgi) font le reste."""
+    # Un montage rend parfois « /lamparo/ » pour « /lamparo » : c'est le même chemin, et c'est lui qui est signé.
+    path = path.rstrip("/") or "/"
     key = authenticate(load_keys(env if env is not None else dict(os.environ)), method, path, header, now if now is not None else int(time.time()))
     if key is None:
         return not_found()
@@ -198,6 +202,7 @@ def handle(method: str, path: str, header: Callable[[str], Optional[str]], root:
         "probe_version": LANTERN_VERSION,
         "key_id": key["id"],
         "collected_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "nonce": header("x-lamparo-nonce"),
         "facts": facts,
         "errors": errors,
     }, key["secret"])

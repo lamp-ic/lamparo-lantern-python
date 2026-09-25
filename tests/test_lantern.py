@@ -4,6 +4,7 @@ import json
 import os
 import platform
 import tempfile
+import time
 import unittest
 
 from lamparo_lantern import LANTERN_VERSION, handle, load_keys, normalize_name
@@ -139,6 +140,44 @@ class LanternTest(unittest.TestCase):
             for k in ENV:
                 os.environ.pop(k, None)
 
+
+    def test_the_mounts_hand_the_path_the_platform_signed(self):
+        """Audit du 25/09/2026, n° 9 : DispatcherMiddleware donne SCRIPT_NAME=/lamparo et PATH_INFO vide ; Starlette
+        donne root_path=/lamparo avec path=/lamparo (ASGI récent) ou path vide (ancien) ; un montage redirige parfois
+        vers /lamparo/. Dans tous les cas, c'est « /lamparo » qui est vérifié."""
+        from lamparo_lantern.wsgi import lantern as wsgi_lantern
+        from lamparo_lantern.asgi import lantern as asgi_lantern, Lantern
+        import asyncio, inspect
+        # Les adaptateurs lisent les clés dans os.environ et l'heure dans time.time() : on signe pour maintenant.
+        os.environ.update(ENV)
+        headers = headers_for(x_lamparo_timestamp=str(int(time.time())))
+        environ = {"REQUEST_METHOD": "GET", "SCRIPT_NAME": "/lamparo", "PATH_INFO": "", "wsgi.url_scheme": "http"}
+        environ.update({"HTTP_" + k.upper().replace("-", "_"): v for k, v in headers.items()})
+        statuses = []
+        body = b"".join(wsgi_lantern(root=self.root)(environ, lambda status, hdrs: statuses.append(status)))
+        self.assertEqual(["200 OK"], statuses, "WSGI monté : SCRIPT_NAME + PATH_INFO vide = /lamparo, signé tel quel.")
+        self.assertIn(b'"probe_version"', body)
+        for scope_path in ("/lamparo", "", "/lamparo/"):
+            scope = {"type": "http", "method": "GET", "root_path": "/lamparo", "path": scope_path, "headers": [(k.encode(), v.encode()) for k, v in headers.items()]}
+            sent = []
+            async def send(message):
+                sent.append(message)
+            asyncio.run(asgi_lantern(root=self.root)(scope, None, send))
+            self.assertEqual(200, sent[0]["status"], "ASGI, path=%r" % scope_path)
+        self.assertIsInstance(asgi_lantern(), Lantern)
+        self.assertFalse(inspect.isfunction(asgi_lantern()), "Une instance : Starlette la pose sur une Route sans l'envelopper.")
+
+    def test_a_signature_that_is_not_hex_is_a_bare_404_not_an_error(self):
+        headers = headers_for()
+        headers["x-lamparo-signature"] = "é" * 64
+        status, _, body = handle("GET", "/lamparo", lambda n: headers.get(n), root=self.root, env=ENV, now=NOW)
+        self.assertEqual((404, b""), (status, body))
+
+    def test_the_response_echoes_the_request_nonce_inside_the_signed_body(self):
+        headers = headers_for()
+        status, _, body = handle("GET", "/lamparo", lambda n: headers.get(n), root=self.root, env=ENV, now=NOW)
+        self.assertEqual(200, status)
+        self.assertEqual(headers["x-lamparo-nonce"], json.loads(body)["nonce"], "Audit n° 6 : la réponse est liée à la requête.")
 
 if __name__ == "__main__":
     unittest.main()
